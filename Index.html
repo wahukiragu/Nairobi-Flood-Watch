@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NairobiFloodWatch — Maji Alert</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --rain: #1a6b9a;
+    --rain-light: #2d9cdb;
+    --danger: #e63946;
+    --warning: #f4a261;
+    --safe: #2a9d8f;
+    --mud: #8b5e3c;
+    --night: #0a0e1a;
+    --night-mid: #111827;
+    --night-card: #161d2e;
+    --text: #e8f4f8;
+    --text-dim: #7a9ab0;
+    --border: rgba(45, 156, 219, 0.2);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Syne', sans-serif;
+    background: var(--night);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+    cursor: crosshair;
+  }
+
+  /* Rain animation background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: 
+      repeating-linear-gradient(
+        90deg,
+        transparent,
+        transparent 120px,
+        rgba(45, 156, 219, 0.015) 120px,
+        rgba(45, 156, 219, 0.015) 121px
+      ),
+      repeating-linear-gradient(
+        180deg,
+        transparent,
+        transparent 80px,
+        rgba(45, 156, 219, 0.015) 80px,
+        rgba(45, 156, 219, 0.015) 81px
+      );
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .rain-container {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    overflow: hidden;
+  }
+
+  .raindrop {
+    position: absolute;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, rgba(45,156,219,0.4));
+    animation: fall linear infinite;
+  }
+
+  @keyframes fall {
+    0% { transform: translateY(-100px); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 0.3; }
+    100% { transform: translateY(100vh); opacity: 0; }
+  }
+
+  /* Header */
+  header {
+    position: relative;
+    z-index: 10;
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(10, 14, 26, 0.9);
+    backdrop-filter: blur(12px);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-icon {
+    width: 40px;
+    height: 40px;
+    background: var(--rain-light);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    animation: pulse-blue 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-blue {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(45,156,219,0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(45,156,219,0); }
+  }
+
+  .logo-text h1 {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    line-height: 1;
+  }
+
+  .logo-text span {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--rain-light);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .header-status {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .live-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--danger);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .live-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--danger);
+    border-radius: 50%;
+    animation: blink 1s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+  }
+
+  .alert-level {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: 4px;
+    background: rgba(230, 57, 70, 0.15);
+    border: 1px solid rgba(230, 57, 70, 0.4);
+    color: var(--danger);
+    letter-spacing: 1px;
+  }
+
+  /* Main layout */
+  .main {
+    position: relative;
+    z-index: 5;
+    display: grid;
+    grid-template-columns: 340px 1fr 280px;
+    height: calc(100vh - 72px);
+  }
+
+  /* Left panel */
+  .panel-left {
+    background: rgba(16, 22, 38, 0.95);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel-left::-webkit-scrollbar { width: 4px; }
+  .panel-left::-webkit-scrollbar-track { background: transparent; }
+  .panel-left::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .panel-section {
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--rain-light);
+    margin-bottom: 12px;
+  }
+
+  /* Stats row */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .stat-card {
+    background: var(--night-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    position: relative;
+    overflow: hidden;
+    animation: fadeIn 0.5s ease forwards;
+    opacity: 0;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .stat-card.danger::before { background: var(--danger); }
+  .stat-card.warning::before { background: var(--warning); }
+  .stat-card.safe::before { background: var(--safe); }
+  .stat-card.info::before { background: var(--rain-light); }
+
+  @keyframes fadeIn {
+    to { opacity: 1; }
+  }
+
+  .stat-card:nth-child(1) { animation-delay: 0.1s; }
+  .stat-card:nth-child(2) { animation-delay: 0.2s; }
+  .stat-card:nth-child(3) { animation-delay: 0.3s; }
+  .stat-card:nth-child(4) { animation-delay: 0.4s; }
+
+  .stat-number {
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .stat-card.danger .stat-number { color: var(--danger); }
+  .stat-card.warning .stat-number { color: var(--warning); }
+  .stat-card.safe .stat-number { color: var(--safe); }
+  .stat-card.info .stat-number { color: var(--rain-light); }
+
+  .stat-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* Alert feed */
+  .alert-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  .alert-feed::-webkit-scrollbar { width: 3px; }
+  .alert-feed::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .alert-item {
+    background: var(--night-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    animation: slideIn 0.3s ease forwards;
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+
+  .alert-item:hover {
+    border-color: var(--rain-light);
+    transform: translateX(3px);
+  }
+
+  @keyframes slideIn {
+    from { transform: translateX(-10px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  .alert-severity {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 4px;
+    flex-shrink: 0;
+  }
+
+  .sev-critical { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+  .sev-high { background: var(--warning); }
+  .sev-medium { background: #f4d03f; }
+  .sev-low { background: var(--safe); }
+
+  .alert-content { flex: 1; }
+  .alert-location {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+
+  .alert-desc {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  .alert-time {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    color: var(--rain-light);
+    margin-top: 4px;
+  }
+
+  /* Report button */
+  .report-btn {
+    margin: 16px;
+    padding: 14px;
+    background: var(--rain);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.2s, transform 0.1s;
+    text-transform: uppercase;
+  }
+
+  .report-btn:hover {
+    background: var(--rain-light);
+    transform: translateY(-1px);
+  }
+
+  .report-btn:active { transform: translateY(0); }
+
+  /* Center map */
+  .map-area {
+    position: relative;
+    background: #0d1520;
+    overflow: hidden;
+  }
+
+  /* SVG map of Nairobi zones */
+  .map-svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .zone {
+    transition: opacity 0.3s, filter 0.3s;
+    cursor: pointer;
+  }
+
+  .zone:hover { filter: brightness(1.3); }
+
+  .flood-pulse {
+    animation: flood-pulse 2s ease-in-out infinite;
+    transform-origin: center;
+  }
+
+  @keyframes flood-pulse {
+    0%, 100% { opacity: 0.6; r: 12; }
+    50% { opacity: 1; r: 18; }
+  }
+
+  .tooltip {
+    position: absolute;
+    background: rgba(10,14,26,0.95);
+    border: 1px solid var(--rain-light);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    white-space: nowrap;
+    z-index: 20;
+  }
+
+  .tooltip.visible { opacity: 1; }
+  .tooltip-name { font-weight: 700; margin-bottom: 4px; }
+  .tooltip-status { font-family: 'Space Mono', monospace; font-size: 10px; }
+
+  /* Map legend */
+  .map-legend {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(10,14,26,0.9);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  /* Map compass / coordinates */
+  .map-overlay-top {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: right;
+    line-height: 1.8;
+  }
+
+  /* Right panel */
+  .panel-right {
+    background: rgba(16, 22, 38, 0.95);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Rain gauge */
+  .rain-gauge {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    height: 80px;
+    padding: 0 4px;
+  }
+
+  .gauge-bar {
+    flex: 1;
+    background: var(--border);
+    border-radius: 3px 3px 0 0;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+  }
+
+  .gauge-fill {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: linear-gradient(180deg, var(--rain-light), var(--rain));
+    border-radius: 3px 3px 0 0;
+    transition: height 0.5s ease;
+  }
+
+  .gauge-fill.critical { background: linear-gradient(180deg, var(--danger), #c1121f); }
+  .gauge-fill.warning { background: linear-gradient(180deg, var(--warning), #e76f51); }
+
+  .gauge-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 8px;
+    color: var(--text-dim);
+    text-align: center;
+    margin-top: 4px;
+    line-height: 1.3;
+  }
+
+  /* Route status */
+  .route-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(45,156,219,0.1);
+    cursor: pointer;
+    transition: padding-left 0.2s;
+  }
+
+  .route-item:hover { padding-left: 6px; }
+
+  .route-name {
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .route-status {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .status-closed {
+    background: rgba(230,57,70,0.15);
+    color: var(--danger);
+    border: 1px solid rgba(230,57,70,0.3);
+  }
+
+  .status-slow {
+    background: rgba(244,162,97,0.15);
+    color: var(--warning);
+    border: 1px solid rgba(244,162,97,0.3);
+  }
+
+  .status-open {
+    background: rgba(42,157,143,0.15);
+    color: var(--safe);
+    border: 1px solid rgba(42,157,143,0.3);
+  }
+
+  /* Report modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+    backdrop-filter: blur(4px);
+  }
+
+  .modal-overlay.open {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .modal {
+    background: var(--night-mid);
+    border: 1px solid var(--rain-light);
+    border-radius: 16px;
+    padding: 28px;
+    width: 400px;
+    max-width: 90vw;
+    transform: translateY(20px);
+    transition: transform 0.3s;
+  }
+
+  .modal-overlay.open .modal {
+    transform: translateY(0);
+  }
+
+  .modal h2 {
+    font-size: 20px;
+    font-weight: 800;
+    margin-bottom: 6px;
+  }
+
+  .modal p {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 20px;
+    line-height: 1.6;
+  }
+
+  .form-group {
+    margin-bottom: 14px;
+  }
+
+  .form-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--rain-light);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    display: block;
+  }
+
+  .form-select, .form-input, .form-textarea {
+    width: 100%;
+    background: var(--night-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+    appearance: none;
+  }
+
+  .form-select:focus, .form-input:focus, .form-textarea:focus {
+    border-color: var(--rain-light);
+  }
+
+  .form-textarea { height: 72px; resize: none; }
+
+  .severity-buttons {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+
+  .sev-btn {
+    padding: 8px 4px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--night-card);
+    color: var(--text-dim);
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+  }
+
+  .sev-btn.active-critical { background: rgba(230,57,70,0.2); border-color: var(--danger); color: var(--danger); }
+  .sev-btn.active-high { background: rgba(244,162,97,0.2); border-color: var(--warning); color: var(--warning); }
+  .sev-btn.active-medium { background: rgba(244,208,63,0.2); border-color: #f4d03f; color: #f4d03f; }
+  .sev-btn.active-low { background: rgba(42,157,143,0.2); border-color: var(--safe); color: var(--safe); }
+
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  .btn-cancel {
+    flex: 1;
+    padding: 12px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-dim);
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .btn-cancel:hover { border-color: var(--text-dim); }
+
+  .btn-submit {
+    flex: 2;
+    padding: 12px;
+    background: var(--rain);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .btn-submit:hover { background: var(--rain-light); }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--safe);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 40px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    z-index: 200;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    letter-spacing: 1px;
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Scrollbar */
+  .panel-right::-webkit-scrollbar { width: 4px; }
+  .panel-right::-webkit-scrollbar-thumb { background: var(--border); }
+
+  /* Responsive hide for smaller screens */
+  @media (max-width: 900px) {
+    .main { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+    .panel-left, .panel-right { max-height: 300px; }
+  }
+
+  .water-level-bar {
+    height: 8px;
+    background: rgba(45,156,219,0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+
+  .water-level-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 1s ease;
+  }
+
+  .whatsapp-tip {
+    background: rgba(37, 211, 102, 0.08);
+    border: 1px solid rgba(37, 211, 102, 0.25);
+    border-radius: 8px;
+    padding: 12px;
+    margin: 0 16px 16px;
+  }
+
+  .whatsapp-tip .tip-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #25d366;
+    margin-bottom: 4px;
+  }
+
+  .whatsapp-tip p {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+</style>
+</head>
+<body>
+
+<!-- Rain effect -->
+<div class="rain-container" id="rainContainer"></div>
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🌊</div>
+    <div class="logo-text">
+      <h1>NairobiFloodWatch</h1>
+      <span>Maji Alert System</span>
+    </div>
+  </div>
+  <div class="header-status">
+    <div class="live-badge">
+      <div class="live-dot"></div>
+      Live Feed
+    </div>
+    <div class="alert-level">⚠ ALERT LEVEL: HIGH</div>
+    <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--text-dim)" id="clock"></div>
+  </div>
+</header>
+
+<!-- Main layout -->
+<div class="main">
+
+  <!-- LEFT PANEL -->
+  <div class="panel-left">
+
+    <!-- Stats -->
+    <div class="panel-section">
+      <div class="section-label">Current Status</div>
+      <div class="stats-grid">
+        <div class="stat-card danger">
+          <div class="stat-number" id="criticalCount">14</div>
+          <div class="stat-label">Critical Zones</div>
+        </div>
+        <div class="stat-card warning">
+          <div class="stat-number" id="reportsCount">87</div>
+          <div class="stat-label">Reports Today</div>
+        </div>
+        <div class="stat-card safe">
+          <div class="stat-number" id="safeCount">23</div>
+          <div class="stat-label">Routes Clear</div>
+        </div>
+        <div class="stat-card info">
+          <div class="stat-number">48mm</div>
+          <div class="stat-label">Rain Today</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live alerts -->
+    <div class="panel-section" style="flex:1">
+      <div class="section-label">Live Community Reports</div>
+      <div class="alert-feed" id="alertFeed">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- WhatsApp tip -->
+    <div class="whatsapp-tip">
+      <div class="tip-header">
+        <span>📱</span> Report via WhatsApp
+      </div>
+      <p>Send location + photo to <strong style="color:#25d366">+254 700 FLOOD</strong> and it appears on this map within 60 seconds.</p>
+    </div>
+
+    <!-- Report button -->
+    <button class="report-btn" onclick="openModal()">
+      📍 Report a Flood Incident
+    </button>
+
+  </div>
+
+  <!-- CENTER MAP -->
+  <div class="map-area">
+    <svg class="map-svg" viewBox="0 0 700 500" id="mapSvg">
+      <defs>
+        <radialGradient id="glowRed" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#e63946" stop-opacity="0.3"/>
+          <stop offset="100%" stop-color="#e63946" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="glowOrange" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#f4a261" stop-opacity="0.25"/>
+          <stop offset="100%" stop-color="#f4a261" stop-opacity="0"/>
+        </radialGradient>
+        <filter id="blur4">
+          <feGaussianBlur stdDeviation="4"/>
+        </filter>
+      </defs>
+
+      <!-- Base map roads (stylized Nairobi grid) -->
+      <!-- Major arteries -->
+      <g stroke="rgba(45,156,219,0.12)" stroke-width="1" fill="none">
+        <!-- Uhuru Highway -->
+        <line x1="200" y1="0" x2="200" y2="500"/>
+        <!-- Mombasa Road -->
+        <line x1="0" y1="320" x2="700" y2="380"/>
+        <!-- Waiyaki Way -->
+        <line x1="0" y1="180" x2="350" y2="230"/>
+        <!-- Thika Road -->
+        <line x1="300" y1="0" x2="380" y2="500"/>
+        <!-- Ring Road -->
+        <ellipse cx="350" cy="250" rx="180" ry="140" stroke="rgba(45,156,219,0.08)" stroke-dasharray="6,6"/>
+        <!-- Cross streets -->
+        <line x1="100" y1="0" x2="100" y2="500"/>
+        <line x1="450" y1="0" x2="450" y2="500"/>
+        <line x1="600" y1="0" x2="600" y2="500"/>
+        <line x1="0" y1="100" x2="700" y2="100"/>
+        <line x1="0" y1="250" x2="700" y2="250"/>
+        <line x1="0" y1="400" x2="700" y2="400"/>
+      </g>
+
+      <!-- Flood zones (colored polygons representing Nairobi areas) -->
+      <!-- Mathare / Eastlands - CRITICAL -->
+      <polygon points="420,80 520,60 560,160 480,200 400,160" 
+               fill="rgba(230,57,70,0.25)" stroke="rgba(230,57,70,0.6)" stroke-width="1.5"
+               class="zone" id="zone-mathare" data-name="Mathare" data-status="Critical flooding" data-level="98%"/>
+      <ellipse cx="480" cy="130" rx="40" ry="30" fill="url(#glowRed)" filter="url(#blur4)"/>
+
+      <!-- Mukuru / Korogocho - CRITICAL -->
+      <polygon points="480,300 580,280 620,380 540,420 460,370" 
+               fill="rgba(230,57,70,0.2)" stroke="rgba(230,57,70,0.5)" stroke-width="1.5"
+               class="zone" id="zone-mukuru" data-name="Mukuru Kwa Njenga" data-status="Flash flood active" data-level="95%"/>
+      <ellipse cx="540" cy="350" rx="35" ry="28" fill="url(#glowRed)" filter="url(#blur4)"/>
+
+      <!-- Kibera - HIGH -->
+      <polygon points="120,290 220,270 250,360 180,400 100,380" 
+               fill="rgba(244,162,97,0.2)" stroke="rgba(244,162,97,0.5)" stroke-width="1.5"
+               class="zone" id="zone-kibera" data-name="Kibera" data-status="High water levels" data-level="78%"/>
+
+      <!-- Westlands - MEDIUM -->
+      <polygon points="60,80 180,60 200,160 140,190 50,170" 
+               fill="rgba(244,208,63,0.15)" stroke="rgba(244,208,63,0.4)" stroke-width="1"
+               class="zone" id="zone-westlands" data-name="Westlands" data-status="Road flooding" data-level="45%"/>
+
+      <!-- CBD - MEDIUM -->
+      <polygon points="220,200 320,180 340,270 260,290 210,260" 
+               fill="rgba(244,208,63,0.12)" stroke="rgba(244,208,63,0.35)" stroke-width="1"
+               class="zone" id="zone-cbd" data-name="Nairobi CBD" data-status="Partial closures" data-level="52%"/>
+
+      <!-- Karen - LOW -->
+      <polygon points="80,380 200,360 230,450 150,480 70,460" 
+               fill="rgba(42,157,143,0.12)" stroke="rgba(42,157,143,0.3)" stroke-width="1"
+               class="zone" id="zone-karen" data-name="Karen" data-status="Minor waterlogging" data-level="22%"/>
+
+      <!-- Eastleigh - HIGH -->
+      <polygon points="340,100 440,80 460,180 380,210 320,170" 
+               fill="rgba(244,162,97,0.18)" stroke="rgba(244,162,97,0.45)" stroke-width="1.5"
+               class="zone" id="zone-eastleigh" data-name="Eastleigh" data-status="Roads impassable" data-level="71%"/>
+
+      <!-- Embakasi - HIGH -->
+      <polygon points="520,200 640,180 660,280 580,300 500,270" 
+               fill="rgba(244,162,97,0.18)" stroke="rgba(244,162,97,0.4)" stroke-width="1"
+               class="zone" id="zone-embakasi" data-name="Embakasi" data-status="Airport road affected" data-level="68%"/>
+
+      <!-- Zone labels -->
+      <g fill="rgba(255,255,255,0.7)" font-family="'Space Mono', monospace" font-size="9">
+        <text x="480" y="135" text-anchor="middle">MATHARE</text>
+        <text x="540" y="355" text-anchor="middle">MUKURU</text>
+        <text x="175" y="340" text-anchor="middle">KIBERA</text>
+        <text x="120" y="130" text-anchor="middle">WESTLANDS</text>
+        <text x="275" y="240" text-anchor="middle">CBD</text>
+        <text x="150" y="430" text-anchor="middle">KAREN</text>
+        <text x="390" y="150" text-anchor="middle">EASTLEIGH</text>
+        <text x="580" y="245" text-anchor="middle">EMBAKASI</text>
+      </g>
+
+      <!-- Flood incident markers (pulsing circles) -->
+      <circle cx="480" cy="130" r="12" fill="none" stroke="#e63946" stroke-width="2" class="flood-pulse"/>
+      <circle cx="480" cy="130" r="6" fill="#e63946"/>
+
+      <circle cx="540" cy="350" r="12" fill="none" stroke="#e63946" stroke-width="2" class="flood-pulse" style="animation-delay:0.5s"/>
+      <circle cx="540" cy="350" r="6" fill="#e63946"/>
+
+      <circle cx="175" cy="340" r="10" fill="none" stroke="#f4a261" stroke-width="2" class="flood-pulse" style="animation-delay:0.3s"/>
+      <circle cx="175" cy="340" r="5" fill="#f4a261"/>
+
+      <circle cx="390" cy="150" r="10" fill="none" stroke="#f4a261" stroke-width="2" class="flood-pulse" style="animation-delay:0.7s"/>
+      <circle cx="390" cy="150" r="5" fill="#f4a261"/>
+
+      <circle cx="275" cy="240" r="8" fill="none" stroke="#f4d03f" stroke-width="2" class="flood-pulse" style="animation-delay:1s"/>
+      <circle cx="275" cy="240" r="4" fill="#f4d03f"/>
+
+      <!-- Nairobi River path -->
+      <path d="M 0,200 Q 150,220 250,260 Q 350,300 450,290 Q 550,280 700,310" 
+            fill="none" stroke="rgba(45,156,219,0.5)" stroke-width="4" stroke-linecap="round"/>
+      <text x="220" y="275" fill="rgba(45,156,219,0.6)" font-family="'Space Mono',monospace" font-size="8" transform="rotate(-5,220,275)">Nairobi River</text>
+
+      <!-- User report markers (crowd sourced) -->
+      <g fill="white" font-size="14">
+        <text x="315" y="200">📍</text>
+        <text x="200" y="165">📍</text>
+        <text x="455" y="260">📍</text>
+        <text x="135" y="305">📍</text>
+        <text x="570" y="325">📍</text>
+      </g>
+
+    </svg>
+
+    <!-- Tooltip -->
+    <div class="tooltip" id="tooltip">
+      <div class="tooltip-name" id="tt-name"></div>
+      <div class="tooltip-status" id="tt-status"></div>
+    </div>
+
+    <!-- Map overlay top right -->
+    <div class="map-overlay-top">
+      <div>📍 -1.2921° S, 36.8219° E</div>
+      <div style="color:var(--rain-light);margin-top:4px" id="reporterCount">● 143 reporters active</div>
+      <div style="margin-top:4px;color:#f4a261">⚠ Last update: <span id="lastUpdate">just now</span></div>
+    </div>
+
+    <!-- Legend -->
+    <div class="map-legend">
+      <div class="section-label" style="margin-bottom:8px">Flood Severity</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--danger)"></div> Critical</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--warning)"></div> High</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f4d03f"></div> Medium</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--safe)"></div> Low</div>
+      <div class="legend-item"><div class="legend-dot" style="background:white;opacity:0.5"></div> 📍 Community report</div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="panel-right">
+
+    <!-- Rainfall by zone -->
+    <div class="panel-section">
+      <div class="section-label">Rainfall Intensity (mm/hr)</div>
+      <div class="rain-gauge">
+        <div>
+          <div class="gauge-bar" style="height:80px">
+            <div class="gauge-fill critical" style="height:90%"></div>
+          </div>
+          <div class="gauge-label">Math-<br>are</div>
+        </div>
+        <div>
+          <div class="gauge-bar" style="height:80px">
+            <div class="gauge-fill warning" style="height:72%"></div>
+          </div>
+          <div class="gauge-label">East-<br>leigh</div>
+        </div>
+        <div>
+          <div class="gauge-bar" style="height:80px">
+            <div class="gauge-fill warning" style="height:68%"></div>
+          </div>
+          <div class="gauge-label">Kib-<br>era</div>
+        </div>
+        <div>
+          <div class="gauge-bar" style="height:80px">
+            <div class="gauge-fill" style="height:45%"></div>
+          </div>
+          <div class="gauge-label">West-<br>lands</div>
+        </div>
+        <div>
+          <div class="gauge-bar" style="height:80px">
+            <div class="gauge-fill" style="height:40%"></div>
+          </div>
+          <div class="gauge-label">CBD</div>
+        </div>
+        <div>
+          <div class="gauge-bar" style="height:80px">
+            <div class="gauge-fill critical" style="height:95%"></div>
+          </div>
+          <div class="gauge-label">Muk-<br>uru</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Water level indicators -->
+    <div class="panel-section">
+      <div class="section-label">River / Drain Levels</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:12px;font-weight:700">Nairobi River</span>
+            <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--danger)">OVERFLOW</span>
+          </div>
+          <div class="water-level-bar"><div class="water-level-fill" style="width:98%;background:var(--danger)"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:12px;font-weight:700">Mathare River</span>
+            <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--danger)">CRITICAL</span>
+          </div>
+          <div class="water-level-bar"><div class="water-level-fill" style="width:91%;background:var(--danger)"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:12px;font-weight:700">Ngong River</span>
+            <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--warning)">HIGH</span>
+          </div>
+          <div class="water-level-bar"><div class="water-level-fill" style="width:74%;background:var(--warning)"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:12px;font-weight:700">Ruiru River</span>
+            <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--safe)">NORMAL</span>
+          </div>
+          <div class="water-level-bar"><div class="water-level-fill" style="width:38%;background:var(--safe)"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Route status -->
+    <div class="panel-section">
+      <div class="section-label">Key Routes</div>
+      <div id="routeList">
+        <div class="route-item">
+          <div>
+            <div class="route-name">Mombasa Rd (Mlolongo)</div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim)">Near JKIA</div>
+          </div>
+          <div class="route-status status-closed">Closed</div>
+        </div>
+        <div class="route-item">
+          <div>
+            <div class="route-name">Ngong Road</div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim)">Near Junction Mall</div>
+          </div>
+          <div class="route-status status-slow">Slow</div>
+        </div>
+        <div class="route-item">
+          <div>
+            <div class="route-name">Thika Superhighway</div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim)">Allsops section</div>
+          </div>
+          <div class="route-status status-slow">Slow</div>
+        </div>
+        <div class="route-item">
+          <div>
+            <div class="route-name">Langata Road</div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim)">South Nairobi</div>
+          </div>
+          <div class="route-status status-open">Open</div>
+        </div>
+        <div class="route-item">
+          <div>
+            <div class="route-name">Jogoo Road</div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim)">Eastlands</div>
+          </div>
+          <div class="route-status status-closed">Closed</div>
+        </div>
+        <div class="route-item">
+          <div>
+            <div class="route-name">Waiyaki Way</div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim)">Westlands–Westgate</div>
+          </div>
+          <div class="route-status status-open">Open</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Emergency contacts -->
+    <div class="panel-section">
+      <div class="section-label">Emergency Contacts</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(45,156,219,0.1)">
+          <span style="font-size:11px">🚒 Nairobi Fire</span>
+          <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--rain-light)">020 222 2181</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(45,156,219,0.1)">
+          <span style="font-size:11px">🏥 Red Cross Kenya</span>
+          <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--rain-light)">1199</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(45,156,219,0.1)">
+          <span style="font-size:11px">🚑 Emergency</span>
+          <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--danger)">999 / 112</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0">
+          <span style="font-size:11px">🏛 County Disaster</span>
+          <span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--rain-light)">0800 720 600</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Report Modal -->
+<div class="modal-overlay" id="reportModal">
+  <div class="modal">
+    <h2>📍 Report a Flood Incident</h2>
+    <p>Your report goes live on the map instantly.<br>Every report helps someone navigate safely.</p>
+
+    <div class="form-group">
+      <label class="form-label">Location / Area</label>
+      <select class="form-select" id="reportLocation">
+        <option value="">Select Nairobi area...</option>
+        <option>Mathare</option>
+        <option>Kibera</option>
+        <option>Mukuru Kwa Njenga</option>
+        <option>Eastleigh</option>
+        <option>Westlands</option>
+        <option>CBD / City Centre</option>
+        <option>Embakasi</option>
+        <option>Karen</option>
+        <option>South B / South C</option>
+        <option>Kasarani</option>
+        <option>Githurai</option>
+        <option>Other</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Severity</label>
+      <div class="severity-buttons">
+        <button class="sev-btn" onclick="setSeverity('low', this)">Low</button>
+        <button class="sev-btn" onclick="setSeverity('medium', this)">Medium</button>
+        <button class="sev-btn" onclick="setSeverity('high', this)">High</button>
+        <button class="sev-btn" onclick="setSeverity('critical', this)">Critical</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">What's happening?</label>
+      <textarea class="form-textarea" id="reportDesc" placeholder="e.g. Road submerged near market, water waist-deep, matatus turning back..."></textarea>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-submit" onclick="submitReport()">🚨 Submit Report</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">✅ Report submitted — appearing on map now</div>
+
+<script>
+  // Rain drops
+  const rainContainer = document.getElementById('rainContainer');
+  for (let i = 0; i < 60; i++) {
+    const drop = document.createElement('div');
+    drop.className = 'raindrop';
+    drop.style.left = Math.random() * 100 + '%';
+    drop.style.height = (Math.random() * 60 + 20) + 'px';
+    drop.style.animationDuration = (Math.random() * 1.5 + 0.8) + 's';
+    drop.style.animationDelay = (Math.random() * 2) + 's';
+    rainContainer.appendChild(drop);
+  }
+
+  // Clock
+  function updateClock() {
+    const now = new Date();
+    document.getElementById('clock').textContent = 
+      now.toLocaleTimeString('en-KE', {hour:'2-digit', minute:'2-digit', second:'2-digit'}) + ' EAT';
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  // Alert feed data
+  const alerts = [
+    { loc: 'Mathare, 3rd St', desc: 'Houses submerged, families on roofs', sev: 'critical', time: '2 min ago' },
+    { loc: 'Jogoo Road', desc: 'Road completely blocked, cars swept', sev: 'critical', time: '5 min ago' },
+    { loc: 'Mukuru Kwa Reuben', desc: 'Flash flood, sewage overflow', sev: 'critical', time: '8 min ago' },
+    { loc: 'Ngong Rd / Prestige', desc: 'Flooding at underpass, waist deep', sev: 'high', time: '12 min ago' },
+    { loc: 'Eastleigh Section 3', desc: 'All roads flooded, matatus diverted', sev: 'high', time: '15 min ago' },
+    { loc: 'Mombasa Rd, Syokimau', desc: 'Highway lane closed, major jam', sev: 'high', time: '18 min ago' },
+    { loc: 'Westlands, Mpaka Rd', desc: 'Waterlogging, slow moving traffic', sev: 'medium', time: '22 min ago' },
+    { loc: 'CBD, Tom Mboya St', desc: 'Street flooding knee-deep', sev: 'medium', time: '28 min ago' },
+    { loc: 'Kasarani, near stadium', desc: 'Minor road flooding', sev: 'low', time: '35 min ago' },
+  ];
+
+  const sevClass = { critical: 'sev-critical', high: 'sev-high', medium: 'sev-medium', low: 'sev-low' };
+
+  function renderAlerts(list) {
+    const feed = document.getElementById('alertFeed');
+    feed.innerHTML = list.map((a, i) => `
+      <div class="alert-item" style="animation-delay:${i*0.07}s">
+        <div class="alert-severity ${sevClass[a.sev]}"></div>
+        <div class="alert-content">
+          <div class="alert-location">${a.loc}</div>
+          <div class="alert-desc">${a.desc}</div>
+          <div class="alert-time">${a.time}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  renderAlerts(alerts);
+
+  // Map tooltip
+  const tooltip = document.getElementById('tooltip');
+  const zones = document.querySelectorAll('.zone');
+
+  zones.forEach(z => {
+    z.addEventListener('mouseenter', (e) => {
+      tooltip.querySelector('#tt-name').textContent = z.dataset.name;
+      tooltip.querySelector('#tt-status').textContent = z.dataset.status + ' — ' + z.dataset.level + ' water level';
+      tooltip.classList.add('visible');
+    });
+    z.addEventListener('mousemove', (e) => {
+      const rect = document.querySelector('.map-area').getBoundingClientRect();
+      tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
+      tooltip.style.top = (e.clientY - rect.top - 40) + 'px';
+    });
+    z.addEventListener('mouseleave', () => tooltip.classList.remove('visible'));
+  });
+
+  // Modal
+  let selectedSeverity = null;
+
+  function openModal() {
+    document.getElementById('reportModal').classList.add('open');
+  }
+
+  function closeModal() {
+    document.getElementById('reportModal').classList.remove('open');
+  }
+
+  function setSeverity(level, btn) {
+    document.querySelectorAll('.sev-btn').forEach(b => b.className = 'sev-btn');
+    btn.classList.add(`active-${level}`);
+    selectedSeverity = level;
+  }
+
+  function submitReport() {
+    const loc = document.getElementById('reportLocation').value;
+    const desc = document.getElementById('reportDesc').value;
+    if (!loc) { alert('Please select a location'); return; }
+
+    // Add to feed
+    const newAlert = {
+      loc, 
+      desc: desc || 'Flooding reported by community member',
+      sev: selectedSeverity || 'medium',
+      time: 'just now'
+    };
+    alerts.unshift(newAlert);
+    renderAlerts(alerts);
+
+    // Update counters
+    const cur = parseInt(document.getElementById('reportsCount').textContent);
+    document.getElementById('reportsCount').textContent = cur + 1;
+
+    closeModal();
+    showToast();
+    document.getElementById('reportLocation').value = '';
+    document.getElementById('reportDesc').value = '';
+    selectedSeverity = null;
+    document.querySelectorAll('.sev-btn').forEach(b => b.className = 'sev-btn');
+  }
+
+  function showToast() {
+    const t = document.getElementById('toast');
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3500);
+  }
+
+  document.getElementById('reportModal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeModal();
+  });
+
+  // Simulate live reporter count fluctuation
+  setInterval(() => {
+    const base = 143;
+    const delta = Math.floor(Math.random() * 10) - 3;
+    document.getElementById('reporterCount').textContent = `● ${base + delta} reporters active`;
+  }, 8000);
+
+  // Simulate last update time
+  let lastUpdateSecs = 0;
+  setInterval(() => {
+    lastUpdateSecs++;
+    document.getElementById('lastUpdate').textContent = 
+      lastUpdateSecs === 1 ? 'just now' : `${lastUpdateSecs}s ago`;
+    if (lastUpdateSecs > 15) {
+      lastUpdateSecs = 0;
+      // Simulate a new report coming in occasionally
+      if (Math.random() > 0.6) {
+        const extraAlerts = [
+          { loc: 'Korogocho, Bridge Rd', desc: 'Bridge overtopped, do not cross', sev: 'critical', time: 'just now' },
+          { loc: 'Huruma, near chief\'s camp', desc: 'Water rising fast', sev: 'high', time: 'just now' },
+          { loc: 'South B, Ole Shapara', desc: 'Road blocked, turn back', sev: 'medium', time: 'just now' },
+        ];
+        alerts.unshift(extraAlerts[Math.floor(Math.random()*extraAlerts.length)]);
+        renderAlerts(alerts.slice(0, 12));
+      }
+    }
+  }, 1000);
+
+</script>
+</body>
+</html>
